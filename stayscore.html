@@ -1,0 +1,587 @@
+<title>StayScore</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+/* Layout: telas em coluna única (largura de celular, máx. 480px), roteadas por hash, fiéis à Figura 1 do relatório. */
+:root{
+  --bg:#f4f6f4; --card:#ffffff; --fg:#1b2420; --muted:#6b7a70; --line:#e2e8e3;
+  --brand:#1e9b57; --brand-dark:#16803f; --brand-soft:#e3f4ea; --brand-ink:#0f6a35;
+  --warn:#e2962e; --bad:#d84a3a; --grey-bar:#cfd6d1; --map-bg:#e8efe9;
+  --shadow:0 1px 2px rgba(20,40,28,.06),0 4px 14px rgba(20,40,28,.08);
+  --display:"Manrope",ui-sans-serif,system-ui,sans-serif; --body:"Source Sans 3",ui-sans-serif,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1713; --card:#18231b; --fg:#eef3ef; --muted:#9fb0a5; --line:#2a382e; --brand:#2fb466; --brand-dark:#229652; --brand-soft:#17301f; --brand-ink:#a9e6c2;
+  --warn:#eaa54c; --bad:#e36a5a; --grey-bar:#44524a; --map-bg:#1d2a21; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1713; --card:#18231b; --fg:#eef3ef; --muted:#9fb0a5; --line:#2a382e; --brand:#2fb466; --brand-dark:#229652; --brand-soft:#17301f; --brand-ink:#a9e6c2;
+  --warn:#eaa54c; --bad:#e36a5a; --grey-bar:#44524a; --map-bg:#1d2a21; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35); color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.35;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.app{max-width:480px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+.screen{display:flex;flex-direction:column;gap:14px;padding-block:12px 20px;flex:1}
+.screen[hidden]{display:none!important}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+h2{font-size:1.15rem;font-weight:800}
+h3{font-size:1.02rem;font-weight:800}
+p{margin:0}
+.muted{color:var(--muted)} .small{font-size:.85rem} .num{font-variant-numeric:tabular-nums}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+button{font:inherit;cursor:pointer}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;border:0;border-radius:12px;padding:15px 18px;background:var(--brand);color:#fff;font-family:var(--display);font-weight:700;font-size:1rem;box-shadow:var(--shadow)}
+.btn:hover{background:var(--brand-dark)}
+.btn:focus-visible,.chip:focus-visible,input:focus-visible,select:focus-visible,.iconbtn:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.card{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+.topbar{display:flex;align-items:center;gap:6px;min-height:44px}
+.topbar h2{flex:1;text-align:center;padding-right:44px}
+.iconbtn{width:44px;height:44px;border:0;background:transparent;border-radius:12px;color:var(--fg);display:grid;place-items:center}
+.iconbtn:hover{background:var(--brand-soft)}
+.logo{display:flex;align-items:center;gap:10px}
+.logo .mark{width:40px;height:40px;border-radius:12px;background:var(--brand);display:grid;place-items:center;color:#fff}
+.logo b{font-family:var(--display);font-size:1.35rem;font-weight:800;letter-spacing:-.01em}
+.logo span{display:block;font-size:.8rem;color:var(--muted)}
+
+/* Formulário (etapa 1 – Entrada) */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600;font-size:.9rem}
+input[type=text],select{width:100%;font:inherit;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);min-width:0}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:8px 14px;font-size:.9rem;font-weight:600}
+.chip[aria-pressed=true]{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-ink)}
+.chip.link{border-style:dashed}
+.error{display:none;background:var(--card);color:var(--bad);border:1.5px solid var(--bad);border-radius:12px;padding:12px 14px;font-weight:600}
+.error.show{display:block}
+.status{font-size:.85rem;color:var(--muted);min-height:1.2em}
+
+/* Tela de resultado */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;position:relative;padding-top:28px}
+.gauge{width:240px;max-width:100%;height:auto}
+.gauge .track{stroke:var(--line)} .gauge .fill{stroke:var(--brand);transition:stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1)}
+.gauge-label{position:relative;margin-top:-104px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
+.gauge-label .eyebrow{color:var(--fg);letter-spacing:.02em;text-transform:none;font-size:.9rem;font-weight:600}
+.gauge-label .score{font-family:var(--display);font-weight:800;font-size:3.2rem;line-height:1;letter-spacing:-.03em}
+.gauge-label .score small{font-size:1.1rem;color:var(--muted);font-weight:600}
+.gauge-label .verdict{font-family:var(--display);font-weight:800;color:var(--brand);font-size:1.05rem;margin-top:6px}
+.gauge-label .verdict span{display:block;font-weight:600;color:var(--muted);font-size:.9rem}
+.info{position:absolute;right:0;top:0;width:36px;height:36px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--muted);display:grid;place-items:center}
+.address{text-align:center;margin-top:32px;font-family:var(--display);font-weight:800;font-size:1.08rem;line-height:1.3;padding-inline:4px}
+@media (prefers-reduced-motion:reduce){.gauge .fill{transition:none}}
+
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpi{background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:12px 8px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;min-width:0}
+.kpi .ico{height:40px;display:grid;place-items:center;margin-bottom:2px}
+.kpi .t{font-size:.8rem;font-weight:700;line-height:1.2}
+.kpi .v{font-family:var(--display);font-weight:800;font-size:1.2rem;color:var(--brand);line-height:1.1;word-break:break-word}
+.kpi .v.warn,.kpi .tag.warn{color:var(--warn)} .kpi .v.bad,.kpi .tag.bad{color:var(--bad)}
+.kpi .tag{font-size:.78rem;font-weight:700;color:var(--brand)}
+.kpi .s{font-size:.7rem;color:var(--muted);line-height:1.25}
+
+.map-head{font-family:var(--display);font-weight:800;font-size:1.02rem}
+.map-head span{font-family:var(--body);font-weight:400;font-size:.85rem;color:var(--muted)}
+.map{width:100%;aspect-ratio:1/.72;max-width:100%;border-radius:14px;overflow:hidden;background:var(--map-bg);box-shadow:var(--shadow);position:relative}
+#leaflet{position:absolute;inset:0;z-index:1}
+#mapcanvas{position:absolute;inset:0;width:100%;height:100%;display:none}
+.map.fallback #leaflet{display:none} .map.fallback #mapcanvas{display:block}
+.map .attr{position:absolute;right:6px;bottom:4px;font-size:.62rem;color:var(--muted);background:var(--card);padding:1px 6px;border-radius:6px;z-index:2;opacity:.9}
+.map .attr a{color:inherit}
+.map.fallback .attr{display:none}
+/* Leaflet (subconjunto do leaflet.css, inline) */
+.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0}
+.leaflet-container{overflow:hidden;background:var(--map-bg);outline-offset:1px;font-family:var(--body);-webkit-tap-highlight-color:transparent;touch-action:pan-x pan-y}
+.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow{user-select:none;-webkit-user-drag:none}
+.leaflet-tile{filter:inherit;visibility:hidden} .leaflet-tile-loaded{visibility:inherit}
+.leaflet-zoom-animated{transform-origin:0 0}
+.leaflet-pane{z-index:400} .leaflet-tile-pane{z-index:200} .leaflet-overlay-pane{z-index:400} .leaflet-shadow-pane{z-index:500} .leaflet-marker-pane{z-index:600} .leaflet-tooltip-pane{z-index:650} .leaflet-popup-pane{z-index:700}
+.leaflet-map-pane canvas{z-index:100} .leaflet-map-pane svg{z-index:200}
+.leaflet-control-container{display:none}
+.leaflet-div-icon{background:transparent;border:0}
+.leaflet-interactive{cursor:pointer}
+.leaflet-container .leaflet-marker-pane img,.leaflet-container .leaflet-tile{max-width:none!important;max-height:none!important}
+.leaflet-dragging .leaflet-grab{cursor:move}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .leaflet-tile-pane{filter:brightness(.8) contrast(1.05) saturate(.7)}}
+:root[data-theme="dark"] .leaflet-tile-pane{filter:brightness(.8) contrast(1.05) saturate(.7)}
+
+/* Painel "Como calculamos" (transparência) */
+.sheet{position:fixed;inset:0;z-index:50;background:rgba(10,20,14,.45);display:flex;align-items:flex-end;justify-content:center;padding:0 max(0px,env(safe-area-inset-left,0px)) 0 max(0px,env(safe-area-inset-right,0px))}
+.sheet[hidden]{display:none!important}
+.sheet .panel{background:var(--card);color:var(--fg);width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:18px 20px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;max-height:85vh;overflow:auto}
+.transp{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.transp div{display:flex;flex-direction:column} .transp b{font-family:var(--display);font-size:1rem} .transp .eyebrow{font-size:.68rem}
+.bars{display:flex;flex-direction:column;gap:8px}
+.bar{display:grid;grid-template-columns:110px 1fr 46px;align-items:center;gap:10px;font-size:.88rem}
+.bar .track{height:9px;border-radius:999px;background:var(--line);overflow:hidden} .bar .track i{display:block;height:100%;background:var(--brand);border-radius:999px}
+.bar .pts{text-align:right;font-family:var(--display);font-weight:700}
+.note{font-size:.8rem;color:var(--muted);border-left:3px solid var(--brand);padding-left:10px}
+
+/* Comparativos detalhados */
+.search{position:relative}
+.search input{padding-left:40px;border-radius:999px;font-size:.95rem}
+.search svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.comp{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:stretch;padding:10px}
+.comp .photo{position:relative;border-radius:12px;overflow:hidden;min-height:96px;background:var(--brand-soft)}
+.comp .photo canvas{width:100%;height:100%;display:block}
+.comp .pin{position:absolute;left:6px;top:6px;width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;box-shadow:var(--shadow)}
+.comp .meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.comp .name{font-family:var(--display);font-weight:700;font-size:.9rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.comp .sub{font-size:.76rem;color:var(--muted)}
+.comp svg.mini{width:100%;height:auto;display:block}
+.mini text{font-family:var(--body);fill:var(--muted);font-size:9px}
+.mini .lab{font-size:8.5px} .mini .tick{font-size:7.5px}
+.mini .val{fill:var(--fg);font-weight:700;font-size:9px;font-family:var(--display)}
+.mini .c{fill:var(--brand)} .mini .m{fill:var(--grey-bar)}
+.mini .med{stroke:var(--warn);stroke-width:1.2;stroke-dasharray:3 2}
+.mini .axis{stroke:var(--line)} .mini .grid{stroke:var(--line);stroke-dasharray:2 3}
+.tips{display:flex;flex-direction:column;gap:10px;padding-left:0;margin:0;list-style:none}
+.tips li{display:grid;grid-template-columns:26px 1fr;gap:10px;font-size:.9rem}
+.tips li i{width:26px;height:26px;border-radius:8px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-style:normal;font-family:var(--display);font-weight:800;font-size:.78rem}
+.empty{text-align:center;padding:24px;color:var(--muted)}
+.sticky-bottom{position:sticky;bottom:0;padding-block:8px 0;background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.footer{font-size:.75rem;color:var(--muted);text-align:center}
+</style>
+
+<div class="app">
+
+<!-- ===== Etapa 1: Entrada ===== -->
+<section class="screen" id="screen-home">
+  <div class="logo">
+    <div class="mark" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></div>
+    <div><b>StayScore</b><span>Inteligência de mercado para aluguel por temporada</span></div>
+  </div>
+  <div class="card" style="display:flex;flex-direction:column;gap:14px">
+    <h2>Descubra, antes de anunciar ou investir, se o seu imóvel vai ficar ocupado e quanto ele pode render</h2>
+    <form id="form" autocomplete="off">
+      <div class="field">
+        <label for="address">Endereço (Rio de Janeiro)</label>
+        <input type="text" id="address" placeholder="Ex.: Rua Visconde de Pirajá, 500 – Ipanema" value="Rua Visconde de Pirajá, 500, Ipanema, Rio de Janeiro">
+        <div class="chips" id="examples" aria-label="Exemplos de endereço"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label for="type">Tipo</label>
+          <select id="type"><option value="Entire home/apt">Imóvel inteiro</option><option value="Private room">Quarto privativo</option></select></div>
+        <div class="field"><label for="bedrooms">Quartos</label>
+          <select id="bedrooms"><option value="0">Studio</option><option value="1" selected>1 quarto</option><option value="2">2 quartos</option><option value="3">3 quartos</option><option value="4">4+ quartos</option></select></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label for="guests">Capacidade</label>
+          <select id="guests"><option value="1">1 hóspede</option><option value="2" selected>2 hóspedes</option><option value="3">3 hóspedes</option><option value="4">4 hóspedes</option><option value="5">5 hóspedes</option><option value="6">6+ hóspedes</option></select></div>
+        <div class="field"><label for="radius">Raio de busca</label>
+          <select id="radius"><option value="500">500 m</option><option value="1000" selected>1 km</option><option value="2000">2 km</option></select></div>
+      </div>
+      <div class="field" style="margin-top:12px"><label id="amen-label">Amenidades</label><div class="chips" id="amenities" role="group" aria-labelledby="amen-label"></div></div>
+      <div class="error" id="error" role="alert"></div>
+      <div style="margin-top:16px"><button class="btn" type="submit" id="submit">Calcular Stay Score</button></div>
+      <p class="status" id="status" style="margin-top:8px"></p>
+    </form>
+  </div>
+  <p class="footer" id="footer">Base: Inside Airbnb (Rio de Janeiro) · Geocodificação: Nominatim / OpenStreetMap</p>
+</section>
+
+<!-- ===== Etapa 4: Resultado (tela 1 da Figura 1) ===== -->
+<section class="screen" id="screen-result" hidden>
+  <div class="card gauge-wrap">
+    <button class="iconbtn" id="back-home" aria-label="Voltar" style="position:absolute;left:4px;top:4px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <button class="info" id="open-info" aria-label="Como a nota é calculada" style="right:12px;top:12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
+    <svg class="gauge" viewBox="0 0 240 134" aria-hidden="true">
+      <path class="track" d="M22 122 A98 98 0 0 1 218 122" fill="none" stroke-width="15" stroke-linecap="round"/>
+      <path class="fill" id="gauge-fill" d="M22 122 A98 98 0 0 1 218 122" fill="none" stroke-width="15" stroke-linecap="round"/>
+    </svg>
+    <div class="gauge-label">
+      <span class="eyebrow">Stay Score</span>
+      <div class="score num"><span id="score">0</span> <small>/ 100</small></div>
+      <div class="verdict" id="verdict">—<span id="verdict-sub"></span></div>
+    </div>
+    <p class="address" id="r-address">Análise para: —</p>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="ico" aria-hidden="true"><svg width="38" height="38" viewBox="0 0 48 48"><rect x="6" y="10" width="36" height="32" rx="5" fill="#fff" stroke="#d84a3a" stroke-width="3"/><rect x="6" y="10" width="36" height="9" rx="4" fill="#d84a3a"/><path d="M14 6v8M34 6v8" stroke="#d84a3a" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="31" r="8" fill="#1e9b57"/><path d="M20 31l3 3 5-6" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="t">Ocupação Média Mensal</div>
+      <div class="v num" id="k-occ">—</div>
+      <div class="s" id="k-occ-sub">—</div>
+    </div>
+    <div class="kpi">
+      <div class="ico" aria-hidden="true"><svg width="38" height="38" viewBox="0 0 48 48"><rect x="4" y="16" width="34" height="20" rx="3" fill="#1e9b57" transform="rotate(-8 21 26)"/><rect x="8" y="14" width="36" height="22" rx="3" fill="#2fb466" stroke="#fff" stroke-width="2"/><circle cx="26" cy="25" r="6" fill="#fff" opacity=".9"/><path d="M26 22v6" stroke="#1e9b57" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <div class="t">Diária Média Estimada</div>
+      <div class="v num" id="k-adr">—</div>
+      <div class="tag" id="k-adr-tag">—</div>
+      <div class="s" id="k-adr-sub">—</div>
+    </div>
+    <div class="kpi">
+      <div class="ico" aria-hidden="true"><svg width="38" height="38" viewBox="0 0 48 48"><path d="M10 6h28v36l-3.5-2.5L31 42l-3.5-2.5L24 42l-3.5-2.5L17 42l-3.5-2.5L10 42z" fill="#fff" stroke="#6b7a70" stroke-width="2.5" stroke-linejoin="round"/><rect x="15" y="11" width="18" height="6" rx="1.5" fill="#1e9b57"/><path d="M16 23h16M16 29h16M16 35h9" stroke="#6b7a70" stroke-width="2.5" stroke-linecap="round"/></svg></div>
+      <div class="t">Receita Mensal Projetada</div>
+      <div class="v num" id="k-rev">—</div>
+      <div class="s" id="k-rev-sub">—</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="map-head">Imóveis Comparáveis <span id="map-sub">(Em um raio de 1 km)</span></div>
+    <div class="map" id="mapbox" style="margin-top:8px">
+      <div id="leaflet" aria-label="Mapa dos imóveis comparáveis"></div>
+      <canvas id="mapcanvas" width="880" height="634" aria-label="Mapa esquemático dos imóveis comparáveis"></canvas>
+      <div class="attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
+    </div>
+  </div>
+
+  <div class="sticky-bottom"><button class="btn" id="to-report">Ver Relatório Completo &amp; Dicas</button></div>
+</section>
+
+<!-- Painel de transparência (princípio "a nota nunca é uma caixa-preta") -->
+<div class="sheet" id="sheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div style="display:flex;align-items:center;justify-content:space-between"><h3 id="sheet-title">Como a nota foi construída</h3><button class="iconbtn" id="close-info" aria-label="Fechar"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="transp">
+      <div><span class="eyebrow">Amostra</span><b class="num" id="t-n">—</b></div>
+      <div><span class="eyebrow">Raio de busca</span><b class="num" id="t-radius">—</b></div>
+      <div><span class="eyebrow">Filtro aplicado</span><b id="t-filter" style="font-size:.88rem">—</b></div>
+      <div><span class="eyebrow">Data de referência</span><b id="t-date" style="font-size:.88rem">—</b></div>
+    </div>
+    <div class="bars" id="breakdown"></div>
+    <p class="muted small" id="breakdown-note">—</p>
+    <p class="note" id="t-note">—</p>
+  </div>
+</div>
+
+<!-- ===== Comparativos Detalhados (tela 2 da Figura 1) ===== -->
+<section class="screen" id="screen-compare" hidden>
+  <div class="topbar">
+    <button class="iconbtn" id="back-result" aria-label="Voltar ao resultado"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <h2>Comparativos Detalhados</h2>
+  </div>
+  <div class="search">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input type="text" id="filter" placeholder="Buscar / Filtrar Imóvel">
+  </div>
+  <div id="comp-list" style="display:flex;flex-direction:column;gap:10px"></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <h3>Dicas para o seu anúncio</h3>
+    <ul class="tips" id="tips"></ul>
+  </div>
+  <div class="sticky-bottom"><button class="btn" id="new-analysis">Analisar Novo Imóvel</button></div>
+</section>
+
+</div>
+
+<script>
+/* =====================================================================
+   StayScore – front-end do MVP
+   Etapas (Seção 4): 1 Entrada → 2 Geocodificação + comparáveis por raio
+   → 3 Cálculo (diária, ocupação, receita) → 4 Nota 0-100, mapa e cartões.
+   Base de anúncios: window.LISTINGS_DATA (listings.js gerado do Inside
+   Airbnb) ou, na falta dela, base de demonstração calibrada por bairro.
+   ===================================================================== */
+const AMENITIES=["Wi-Fi","Ar-condicionado","Piscina","Estacionamento","Cozinha","Vista para o mar","Pet friendly","Academia"];
+const EXAMPLES=["Av. Atlântica, 1500, Copacabana","Rua Dias Ferreira, 100, Leblon","Av. das Américas, 4000, Barra da Tijuca","Rua Conde de Bonfim, 300, Tijuca","Rua do Lavradio, 40, Lapa"];
+
+const $=id=>document.getElementById(id);
+const fmtBRL=v=>"R$ "+Math.round(v).toLocaleString("pt-BR");
+const fmtBRLc=v=>v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}).replace(/ /g," ");
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const median=a=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+const quantile=(a,q)=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);const p=(s.length-1)*q;const b=Math.floor(p);return s[b]+(s[Math.min(b+1,s.length-1)]-s[b])*(p-b);};
+const norm=s=>s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\b(av|avenida)\b\.?/g,"av").replace(/\b(r|rua)\b\.?/g,"rua").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+function haversine(lat1,lng1,lat2,lng2){const R=6371000,t=Math.PI/180;const dLat=(lat2-lat1)*t,dLng=(lng2-lng1)*t;const a=Math.sin(dLat/2)**2+Math.cos(lat1*t)*Math.cos(lat2*t)*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(a));}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+/* ---------- gazetteer local (fallback do Nominatim) ---------- */
+const NEIGHBORHOODS=[
+ ["Ipanema",-22.9838,-43.2045,620,0.71,140,700],["Copacabana",-22.9711,-43.1862,420,0.74,220,900],["Leblon",-22.9846,-43.2238,760,0.66,90,600],
+ ["Arpoador",-22.9880,-43.1920,560,0.72,40,350],["Botafogo",-22.9511,-43.1830,300,0.62,110,800],["Flamengo",-22.9330,-43.1760,270,0.60,80,700],
+ ["Laranjeiras",-22.9340,-43.1870,260,0.55,45,600],["Catete",-22.9260,-43.1770,220,0.58,40,400],["Glória",-22.9200,-43.1760,230,0.57,35,400],
+ ["Centro",-22.9068,-43.1770,190,0.45,60,800],["Lapa",-22.9140,-43.1800,210,0.54,55,450],["Santa Teresa",-22.9210,-43.1880,290,0.52,70,700],
+ ["Urca",-22.9500,-43.1660,350,0.58,25,500],["Humaitá",-22.9560,-43.1960,280,0.56,35,400],["Jardim Botânico",-22.9640,-43.2200,380,0.55,40,600],
+ ["Gávea",-22.9760,-43.2320,400,0.52,35,600],["Lagoa",-22.9690,-43.2050,450,0.56,50,700],["São Conrado",-22.9980,-43.2600,520,0.50,45,800],
+ ["Barra da Tijuca",-23.0050,-43.3180,430,0.58,200,1800],["Recreio dos Bandeirantes",-23.0200,-43.4600,320,0.52,90,1500],["Jacarepaguá",-22.9600,-43.3700,230,0.44,60,1500],
+ ["Tijuca",-22.9240,-43.2340,200,0.50,70,900],["Vila Isabel",-22.9150,-43.2500,170,0.44,25,600],["Grajaú",-22.9220,-43.2650,160,0.40,15,500],
+ ["Maracanã",-22.9120,-43.2280,180,0.46,20,500],["Leme",-22.9630,-43.1690,400,0.70,45,350],["Vidigal",-22.9920,-43.2360,260,0.60,30,350],
+ ["Joá",-23.0120,-43.2900,700,0.42,10,500],["Cosme Velho",-22.9400,-43.1960,250,0.50,15,400],["Praça da Bandeira",-22.9100,-43.2100,150,0.42,15,400]
+];
+const STREETS=[
+ ["Rua Visconde de Pirajá","Ipanema",-22.9846,-43.2047,{lng:[-43.1950,-43.2120]}],["Rua Vinícius de Moraes","Ipanema",-22.9840,-43.2030],["Rua Prudente de Morais","Ipanema",-22.9855,-43.2050],
+ ["Rua Barão da Torre","Ipanema",-22.9830,-43.2040],["Av. Vieira Souto","Ipanema",-22.9870,-43.2030],["Rua Farme de Amoedo","Ipanema",-22.9850,-43.1990],["Rua Garcia D'Ávila","Ipanema",-22.9840,-43.2080],
+ ["Av. Atlântica","Copacabana",-22.9700,-43.1810,{lat:[-22.9630,-22.9850]}],["Av. Nossa Senhora de Copacabana","Copacabana",-22.9700,-43.1850,{lat:[-22.9640,-22.9830]}],["Rua Barata Ribeiro","Copacabana",-22.9690,-43.1880,{lat:[-22.9640,-22.9790]}],
+ ["Rua Siqueira Campos","Copacabana",-22.9670,-43.1870],["Rua Figueiredo Magalhães","Copacabana",-22.9680,-43.1900],["Rua Bolívar","Copacabana",-22.9760,-43.1900],["Rua Raul Pompeia","Copacabana",-22.9850,-43.1910],
+ ["Rua Francisco Otaviano","Arpoador",-22.9870,-43.1930],["Rua Gomes Carneiro","Ipanema",-22.9860,-43.1955],
+ ["Rua Dias Ferreira","Leblon",-22.9860,-43.2250],["Av. Ataulfo de Paiva","Leblon",-22.9845,-43.2220],["Av. Delfim Moreira","Leblon",-22.9875,-43.2230],["Rua General Urquiza","Leblon",-22.9850,-43.2270],
+ ["Rua Voluntários da Pátria","Botafogo",-22.9520,-43.1920],["Rua São Clemente","Botafogo",-22.9500,-43.1880],["Praia de Botafogo","Botafogo",-22.9470,-43.1800],["Rua Visconde de Caravelas","Botafogo",-22.9560,-43.1950],["Rua Real Grandeza","Botafogo",-22.9560,-43.1890],
+ ["Praia do Flamengo","Flamengo",-22.9330,-43.1740],["Rua Senador Vergueiro","Flamengo",-22.9340,-43.1770],["Rua Marquês de Abrantes","Flamengo",-22.9370,-43.1790],["Rua Paissandu","Flamengo",-22.9330,-43.1780],
+ ["Rua das Laranjeiras","Laranjeiras",-22.9340,-43.1880],["Rua Pinheiro Machado","Laranjeiras",-22.9370,-43.1850],["Rua do Catete","Catete",-22.9260,-43.1780],
+ ["Av. Rio Branco","Centro",-22.9050,-43.1770],["Av. Presidente Vargas","Centro",-22.9040,-43.1850],["Rua do Lavradio","Lapa",-22.9120,-43.1820],["Rua Mem de Sá","Lapa",-22.9140,-43.1810],["Av. Gomes Freire","Lapa",-22.9110,-43.1830],
+ ["Rua Almirante Alexandrino","Santa Teresa",-22.9230,-43.1890],["Rua Monte Alegre","Santa Teresa",-22.9190,-43.1850],["Rua Joaquim Murtinho","Santa Teresa",-22.9190,-43.1830],
+ ["Av. Pasteur","Urca",-22.9500,-43.1700],["Rua Humaitá","Humaitá",-22.9560,-43.1960],["Rua Jardim Botânico","Jardim Botânico",-22.9630,-43.2150],["Rua Marquês de São Vicente","Gávea",-22.9760,-43.2300],
+ ["Av. Epitácio Pessoa","Lagoa",-22.9720,-43.2000],["Av. Borges de Medeiros","Lagoa",-22.9700,-43.2130],["Av. Niemeyer","São Conrado",-22.9950,-43.2450],["Av. Prefeito Mendes de Morais","São Conrado",-22.9990,-43.2620],
+ ["Av. das Américas","Barra da Tijuca",-23.0040,-43.3300,{lng:[-43.2900,-43.4300]}],["Av. Lúcio Costa","Barra da Tijuca",-23.0110,-43.3200,{lng:[-43.2950,-43.4500]}],["Av. Sernambetiba","Barra da Tijuca",-23.0110,-43.3200],
+ ["Av. Olegário Maciel","Barra da Tijuca",-23.0080,-43.3050],["Av. Érico Veríssimo","Barra da Tijuca",-23.0100,-43.3080],["Av. Ayrton Senna","Barra da Tijuca",-22.9900,-43.3650],["Av. Gilka Machado","Recreio dos Bandeirantes",-23.0150,-43.4600],
+ ["Rua Conde de Bonfim","Tijuca",-22.9250,-43.2330,{lat:[-22.9180,-22.9330]}],["Rua Uruguai","Tijuca",-22.9290,-43.2420],["Rua Haddock Lobo","Tijuca",-22.9180,-43.2180],["Rua São Francisco Xavier","Tijuca",-22.9150,-43.2300],
+ ["Boulevard 28 de Setembro","Vila Isabel",-22.9150,-43.2480],["Rua Gustavo Sampaio","Leme",-22.9630,-43.1690],["Av. Princesa Isabel","Leme",-22.9640,-43.1740],["Av. Presidente Antônio Carlos","Centro",-22.9090,-43.1730]
+];
+function nearestNeighborhood(lat,lng){let b=NEIGHBORHOODS[0],d=1e12;for(const nb of NEIGHBORHOODS){const dd=haversine(lat,lng,nb[1],nb[2]);if(dd<d){d=dd;b=nb;}}return b[0];}
+function geocodeLocal(q){
+  const n=norm(q); if(!n) return null;
+  const m=q.match(/(-?\d{1,2}[.,]\d+)\s*[,;]\s*(-?\d{1,2}[.,]\d+)/);
+  if(m){const lat=parseFloat(m[1].replace(",",".")),lng=parseFloat(m[2].replace(",","."));return{lat,lng,label:q.trim(),neighborhood:nearestNeighborhood(lat,lng)};}
+  const number=(q.match(/,\s*(\d{1,5})\b/)||q.match(/\b(\d{1,5})\b/)||[])[1];
+  for(const [name,nb,lat,lng,span] of STREETS){
+    const sn=norm(name);
+    if(n.includes(sn)||(sn.length>8&&n.includes(sn.replace(/^(rua|av) /,"")))){
+      let la=lat,lo=lng;
+      if(span&&number){const t=clamp(parseInt(number,10)/2000,0,1);if(span.lat)la=span.lat[0]+(span.lat[1]-span.lat[0])*t;if(span.lng)lo=span.lng[0]+(span.lng[1]-span.lng[0])*t;}
+      else if(number){la+=(mulberry32(parseInt(number,10))()-0.5)*0.003;lo+=(mulberry32(parseInt(number,10)+7)()-0.5)*0.003;}
+      return{lat:la,lng:lo,label:name+(number?", "+number:"")+", "+nb+", Rio de Janeiro",neighborhood:nb};
+    }
+  }
+  for(const nbh of NEIGHBORHOODS){if(n.includes(norm(nbh[0])))return{lat:nbh[1],lng:nbh[2],label:q.trim()+" ("+nbh[0]+")",neighborhood:nbh[0]};}
+  return null;
+}
+/* Nominatim (Seção 5.2) com limite ao Rio de Janeiro; cai para o gazetteer local se a rede não responder. */
+async function geocode(q){
+  try{
+    const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),6000);
+    const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&viewbox=-43.80,-22.74,-43.09,-23.10&bounded=1&q="+encodeURIComponent(q);
+    const res=await fetch(url,{signal:ctl.signal,headers:{"Accept-Language":"pt-BR"}}); clearTimeout(to);
+    if(res.ok){const j=await res.json(); if(j.length){const lat=+j[0].lat,lng=+j[0].lon; const a=j[0].address||{}; const nb=a.suburb||a.neighbourhood||a.city_district||nearestNeighborhood(lat,lng);
+      const label=[a.road||a.pedestrian||a.residential,a.house_number,nb,"Rio de Janeiro"].filter(Boolean).join(", "); return{lat,lng,label:label||j[0].display_name,neighborhood:nb,source:"Nominatim"};}}
+  }catch(e){}
+  const g=geocodeLocal(q); if(g) g.source="base local"; return g;
+}
+
+/* ---------- base de anúncios ---------- */
+function demoListings(){
+  const rnd=mulberry32(20260627);const out=[];let id=1000;
+  const adjectives=["Aconchegante","Charmoso","Moderno","Amplo","Luxuoso","Ensolarado","Compacto","Elegante","Novo","Clássico"];
+  const kinds=["Apartamento","Apê","Loft","Studio","Cobertura","Flat"];
+  for(const [name,lat,lng,basePrice,baseOcc,count,spread] of NEIGHBORHOODS){
+    for(let i=0;i<count;i++){
+      const ang=rnd()*Math.PI*2,r=Math.sqrt(rnd())*spread;
+      const la=lat+(r*Math.cos(ang))/111320,lo=lng+(r*Math.sin(ang))/(111320*Math.cos(lat*Math.PI/180));
+      const room=rnd()<0.82?"Entire home/apt":"Private room";
+      const bedrooms=room==="Private room"?1:[0,1,1,1,2,2,3,4][Math.floor(rnd()*8)];
+      const accommodates=room==="Private room"?(rnd()<.6?2:1):clamp(bedrooms*2+(rnd()<.5?0:1)+(bedrooms===0?2:0),1,10);
+      const amen=AMENITIES.filter((a,ix)=>rnd()<[0.95,0.8,0.18,0.3,0.9,0.22,0.25,0.15][ix]);
+      const sea=amen.includes("Vista para o mar")?1.25:1,pool=amen.includes("Piscina")?1.1:1;
+      let price=basePrice*(room==="Private room"?0.42:1)*(1+0.32*Math.max(bedrooms-1,0)+(bedrooms===0?-0.15:0))*sea*pool*(0.6+rnd()*0.9);
+      price=Math.round(price/5)*5;
+      const occ=clamp(baseOcc+(rnd()-0.5)*0.35-(price/basePrice-1)*0.12+(amen.includes("Ar-condicionado")?0.03:-0.04),0.08,0.96);
+      const availability_365=Math.round(365*(1-occ)*(0.85+rnd()*0.3));
+      const reviews_per_month=+((occ*30/3.5)*0.5*(0.6+rnd()*0.8)).toFixed(2);
+      const number_of_reviews=Math.round(reviews_per_month*(6+rnd()*40));
+      const kind=room==="Private room"?"Quarto":(bedrooms===0?"Studio":kinds[Math.floor(rnd()*kinds.length)]);
+      const title=`${adjectives[Math.floor(rnd()*adjectives.length)]} ${kind}${bedrooms>0&&room!=="Private room"?" "+bedrooms+(bedrooms>1?" quartos":" quarto"):""} em ${name}`;
+      out.push({id:id++,name:title,neighbourhood:name,latitude:la,longitude:lo,room_type:room,bedrooms,accommodates,price,availability_365,reviews_per_month,number_of_reviews,amenities:amen,photoSeed:Math.floor(rnd()*1e6)});
+    }
+  }
+  return out;
+}
+const REAL=window.LISTINGS_DATA&&window.LISTINGS_DATA.length>50;
+const LISTINGS=REAL?window.LISTINGS_DATA:demoListings();
+const DATA_DATE=REAL?(window.LISTINGS_DATE||"última publicação do Inside Airbnb"):"27 jun 2026 (base de demonstração)";
+const DATA_REF=REAL?"Inside Airbnb · Rio de Janeiro · "+DATA_DATE:"base de demonstração calibrada por bairro a partir de dados públicos do Rio (os dados reais do Inside Airbnb entram via listings.js)";
+if(!REAL) $("footer").textContent="Base atual: demonstração calibrada por bairro · Geocodificação: Nominatim / OpenStreetMap";
+
+/* ---------- ocupação estimada por anúncio (Seção 5.2) ---------- */
+function estimateOccupancy(l){
+  const occCal=clamp(1-l.availability_365/365,0,1);          // disponibilidade do calendário
+  const occRev=clamp((l.reviews_per_month/0.5)*3.5/30.4,0,1); // reviews ≈ 50% das reservas; estadia média 3,5 noites
+  return clamp(0.5*occCal+0.5*occRev,0.05,0.97);
+}
+LISTINGS.forEach(l=>{l.occ=estimateOccupancy(l);l.revenue=l.price*30.4*l.occ;});
+const CITY_REV=LISTINGS.map(l=>l.revenue),CITY_OCC=LISTINGS.map(l=>l.occ);
+
+/* ---------- comparáveis + cálculo (etapas 2 e 3) ---------- */
+function analyze(input){
+  const {lat,lng,radius,room_type,bedrooms,guests,amenities}=input;
+  const inRadius=LISTINGS.map(l=>({...l,dist:haversine(lat,lng,l.latitude,l.longitude)})).filter(l=>l.dist<=radius);
+  const levels=[
+    {label:"mesmo tipo, mesmos quartos, capacidade ±1",f:l=>l.room_type===room_type&&l.bedrooms===bedrooms&&Math.abs(l.accommodates-guests)<=1},
+    {label:"mesmo tipo, quartos ±1, capacidade ±2",f:l=>l.room_type===room_type&&Math.abs(l.bedrooms-bedrooms)<=1&&Math.abs(l.accommodates-guests)<=2},
+    {label:"mesmo tipo de imóvel",f:l=>l.room_type===room_type},
+    {label:"todos os anúncios no raio",f:()=>true}];
+  let comps=[],filterLabel="";
+  for(const lv of levels){comps=inRadius.filter(lv.f);filterLabel=lv.label;if(comps.length>=8)break;}
+  if(comps.length<3)return{ok:false,reason:"Poucos anúncios comparáveis nesse raio. Aumente o raio de busca ou use um endereço em outra região."};
+  const prices=comps.map(c=>c.price),q1=quantile(prices,.25),q3=quantile(prices,.75),iqr=q3-q1;
+  const clean=comps.filter(c=>c.price>=q1-1.5*iqr&&c.price<=q3+1.5*iqr);
+  const sample=(clean.length>=5?clean:comps).sort((a,b)=>a.dist-b.dist);
+  const adr=median(sample.map(c=>c.price)),adrLow=quantile(sample.map(c=>c.price),.25),adrHigh=quantile(sample.map(c=>c.price),.75);
+  const occ=median(sample.map(c=>c.occ)),occLow=quantile(sample.map(c=>c.occ),.25),occHigh=quantile(sample.map(c=>c.occ),.75);
+  let amenAdj=0;
+  for(const a of ["Ar-condicionado","Piscina","Vista para o mar","Estacionamento"]){
+    const w=sample.filter(c=>c.amenities.includes(a)),wo=sample.filter(c=>!c.amenities.includes(a));
+    if(w.length>=3&&wo.length>=3){const d=median(w.map(c=>c.occ))-median(wo.map(c=>c.occ));amenAdj+=amenities.includes(a)?Math.max(d,0)*0.5:Math.min(d,0)*0.5;}
+  }
+  const occUser=clamp(occ+clamp(amenAdj,-0.08,0.08),0.05,0.97);
+  const days=Math.round(occUser*30.4),revenue=adr*days;
+  const density=inRadius.filter(l=>l.room_type===room_type).length/(Math.PI*(radius/1000)**2);
+  const occScore=clamp((occUser-0.35)/0.5,0,1);
+  const revPct=CITY_REV.filter(v=>v<=revenue).length/CITY_REV.length;
+  const revScore=clamp((revPct-0.2)/0.75,0,1);
+  const compScore=clamp(1-(density-15)/125,0,1);
+  const score=Math.round(100*(0.45*occScore+0.35*revScore+0.20*compScore));
+  return{ok:true,score,adr,adrLow,adrHigh,occ:occUser,occLow,occHigh,occRegion:occ,days,revenue,sample,filterLabel,inRadius:inRadius.length,density,
+    parts:[{k:"Ocupação",w:45,v:occScore},{k:"Receita",w:35,v:revScore},{k:"Competição",w:20,v:compScore}],cityOcc:median(CITY_OCC),revPct};
+}
+function verdict(s){return s>=80?["Excelente","Potencial"]:s>=65?["Muito Bom","Potencial"]:s>=50?["Bom","Potencial"]:s>=35?["Regular","Potencial"]:["Baixo","Potencial"];}
+function tips(r,input){
+  const t=[],s=r.sample;
+  const withAC=s.filter(c=>c.amenities.includes("Ar-condicionado")),noAC=s.filter(c=>!c.amenities.includes("Ar-condicionado"));
+  if(!input.amenities.includes("Ar-condicionado")&&withAC.length>=3&&noAC.length>=3){const d=median(withAC.map(c=>c.occ))-median(noAC.map(c=>c.occ));if(d>0.02)t.push(`Na sua vizinhança, anúncios com ar-condicionado têm ocupação ${Math.round(d*100)} pontos maior. Vale considerar a instalação antes de anunciar.`);}
+  const top=s.filter(c=>c.occ>=r.occHigh);if(top.length){const p=median(top.map(c=>c.price));t.push(`Os 25% mais ocupados cobram em média ${fmtBRL(p)} por diária, ${p<r.adr?"abaixo":"acima"} da mediana de ${fmtBRL(r.adr)}. Use essa faixa como referência inicial de preço.`);}
+  if(r.density>90)t.push(`A região tem alta competição (${Math.round(r.density)} anúncios/km² do mesmo tipo). Fotos profissionais e resposta rápida pesam mais aqui do que uma diária baixa.`);
+  else if(r.density<35)t.push(`Há poucos anúncios do mesmo tipo por km² (${Math.round(r.density)}). Oferta baixa costuma sustentar diárias acima da mediana nos fins de semana.`);
+  if(r.occ<0.55)t.push("A ocupação estimada está abaixo de 55%. Diárias flexíveis por temporada e estadia mínima de 2 noites ajudam a preencher dias de semana.");
+  else t.push(`Com ${Math.round(r.occ*100)}% de ocupação estimada, o calendário tende a encher: evite bloquear datas de alta temporada (réveillon e carnaval) e revise a diária mensalmente.`);
+  t.push(`Acompanhe a receita projetada (${fmtBRL(r.revenue)}/mês) e refaça a análise quando a base do Inside Airbnb for atualizada.`);
+  return t.slice(0,4);
+}
+
+/* ---------- mapa: Leaflet + OpenStreetMap; canvas esquemático se os tiles não carregarem ---------- */
+let LMAP=null,LLAYER=null,TILE_OK=null;
+function pinIcon(color,size){return L.divIcon({className:"",iconSize:[size,size*1.3],iconAnchor:[size/2,size*1.3],html:`<svg width="${size}" height="${size*1.3}" viewBox="0 0 24 31"><path d="M12 30C12 30 2 18.5 2 11a10 10 0 0 1 20 0c0 7.5-10 19-10 19z" fill="${color}" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11" r="3.6" fill="#fff"/></svg>`});}
+function drawLeaflet(center,r,radius){
+  if(typeof L==="undefined"){return false;}
+  const box=$("mapbox");
+  if(!LMAP){
+    LMAP=L.map("leaflet",{zoomControl:false,attributionControl:false,scrollWheelZoom:false});
+    const tiles=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19});
+    tiles.on("tileload",()=>{if(TILE_OK===null){TILE_OK=true;box.classList.remove("fallback");}});
+    tiles.on("tileerror",()=>{if(TILE_OK===null){TILE_OK=false;box.classList.add("fallback");if(STATE)drawCanvasMap(STATE.geo,STATE.r,STATE.input.radius);}});
+    tiles.addTo(LMAP);
+    setTimeout(()=>{if(TILE_OK===null){TILE_OK=false;box.classList.add("fallback");if(STATE)drawCanvasMap(STATE.geo,STATE.r,STATE.input.radius);}},5000);
+  }
+  if(LLAYER)LLAYER.remove();
+  LLAYER=L.layerGroup().addTo(LMAP);
+  const css=getComputedStyle(document.documentElement),brand=css.getPropertyValue("--brand").trim(),bad=css.getPropertyValue("--bad").trim();
+  L.circle([center.lat,center.lng],{radius,color:brand,weight:2,dashArray:"6 6",fillColor:brand,fillOpacity:.08}).addTo(LLAYER);
+  r.sample.forEach(c=>L.marker([c.latitude,c.longitude],{icon:pinIcon(brand,22),title:c.name}).addTo(LLAYER));
+  L.marker([center.lat,center.lng],{icon:pinIcon(bad,30),zIndexOffset:1000}).addTo(LLAYER);
+  LMAP.fitBounds(L.latLng(center.lat,center.lng).toBounds(radius*2.1));
+  setTimeout(()=>LMAP.invalidateSize(),50);
+  return true;
+}
+function drawCanvasMap(center,r,radius){
+  const cv=$("mapcanvas"),ctx=cv.getContext("2d");const W=cv.width,H=cv.height;
+  const css=getComputedStyle(document.documentElement),col=k=>css.getPropertyValue(k).trim();
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=col("--map-bg");ctx.fillRect(0,0,W,H);
+  const seed=mulberry32(Math.round(center.lat*1e4+center.lng*1e4));ctx.strokeStyle=col("--card");ctx.lineWidth=6;
+  const sp=W/9;for(let x=sp*0.4;x<W;x+=sp){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+(seed()-0.5)*30,H);ctx.stroke();}
+  for(let y=sp*0.3;y<H;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y+(seed()-0.5)*30);ctx.stroke();}
+  const px=(W*0.42)/radius,cx=W/2,cy=H/2;
+  const toXY=(lat,lng)=>[cx+(lng-center.lng)*111320*Math.cos(center.lat*Math.PI/180)*px,cy-(lat-center.lat)*111320*px];
+  ctx.beginPath();ctx.arc(cx,cy,radius*px,0,Math.PI*2);ctx.fillStyle=col("--brand");ctx.globalAlpha=.08;ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle=col("--brand");ctx.setLineDash([10,8]);ctx.lineWidth=3;ctx.stroke();ctx.setLineDash([]);
+  const pin=(x,y,color,s)=>{ctx.beginPath();ctx.moveTo(x,y);ctx.bezierCurveTo(x-s*.9,y-s*1.1,x-s*.55,y-s*2,x,y-s*2);ctx.bezierCurveTo(x+s*.55,y-s*2,x+s*.9,y-s*1.1,x,y);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle="rgba(255,255,255,.9)";ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.arc(x,y-s*1.3,s*.3,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();};
+  for(const c of r.sample){const [x,y]=toXY(c.latitude,c.longitude);pin(x,y,col("--brand"),18);}
+  pin(cx,cy,col("--bad"),24);
+  ctx.fillStyle=col("--muted");ctx.font="700 22px Manrope, sans-serif";ctx.textAlign="right";const bm=radius>=2000?1000:500;ctx.fillRect(W-30-bm*px,H-36,bm*px,4);ctx.fillText(bm>=1000?"1 km":bm+" m",W-30,H-46);
+}
+function drawPhoto(cv,seed){
+  const ctx=cv.getContext("2d"),W=cv.width,H=cv.height,rnd=mulberry32(seed);
+  const hues=[[214,60,78],[36,70,80],[150,30,70],[20,40,70],[200,30,85]];const [h,s,l]=hues[Math.floor(rnd()*hues.length)];
+  ctx.fillStyle=`hsl(${h} ${s}% ${l}%)`;ctx.fillRect(0,0,W,H);ctx.fillStyle=`hsl(${h+20} ${s-10}% ${l-30}%)`;ctx.fillRect(0,H*.68,W,H*.32);
+  ctx.fillStyle="hsl(200 80% 88%)";ctx.fillRect(W*.58,H*.12,W*.3,H*.36);ctx.strokeStyle="rgba(255,255,255,.8)";ctx.lineWidth=3;ctx.strokeRect(W*.58,H*.12,W*.3,H*.36);
+  ctx.fillStyle=`hsl(${(h+160)%360} 35% ${l-25}%)`;ctx.fillRect(W*.1,H*.5,W*.42,H*.22);ctx.fillRect(W*.1,H*.42,W*.42,H*.1);
+  ctx.fillStyle="rgba(255,255,255,.7)";ctx.fillRect(W*.14,H*.44,W*.14,H*.08);ctx.fillRect(W*.32,H*.44,W*.14,H*.08);
+}
+
+/* ---------- renderização (etapa 4) ---------- */
+let STATE=null;
+function render(r,input,geo){
+  const [v1,v2]=verdict(r.score);
+  $("score").textContent=r.score;$("verdict").firstChild.textContent=v1;$("verdict-sub").textContent=v2;
+  const fill=$("gauge-fill"),len=fill.getTotalLength();fill.style.strokeDasharray=len;fill.style.strokeDashoffset=len;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{fill.style.strokeDashoffset=len*(1-r.score/100);}));
+  $("r-address").textContent="Análise para: "+geo.label;
+  const occPct=Math.round(r.occ*100);
+  $("k-occ").textContent=occPct+"% "+(r.occ>=r.cityOcc?"↑":"↓");$("k-occ").className="num v "+(occPct>=65?"":occPct>=50?"warn":"bad");
+  $("k-occ-sub").textContent=`(Média do mercado ${Math.round(r.occLow*100)}-${Math.round(r.occHigh*100)}%)`;
+  const adrRatio=r.adr/median(LISTINGS.filter(l=>l.room_type===input.room_type).map(l=>l.price));
+  $("k-adr").textContent=fmtBRLc(r.adr);$("k-adr-tag").textContent=adrRatio>=1.3?"Alto":adrRatio>=0.8?"Médio":"Baixo";$("k-adr-tag").className="tag "+(adrRatio>=1.3?"":adrRatio>=0.8?"warn":"bad");
+  $("k-adr-sub").textContent=`(Pode variar de ${fmtBRL(r.adrLow)} a ${fmtBRL(r.adrHigh)})`;
+  $("k-rev").textContent=fmtBRLc(r.revenue);$("k-rev-sub").textContent=`(Baseado em ${r.days} dias ocupados)`;
+  const radiusLabel=input.radius>=1000?(input.radius/1000)+" km":input.radius+" m";
+  $("map-sub").textContent=`(Em um raio de ${radiusLabel})`;
+  STATE={r,input,geo};
+  if(!drawLeaflet(geo,r,input.radius)){TILE_OK=false;$("mapbox").classList.add("fallback");}
+  if(TILE_OK===false)drawCanvasMap(geo,r,input.radius);
+  $("t-n").textContent=`${r.sample.length} imóveis`;$("t-radius").textContent=radiusLabel;$("t-filter").textContent=r.filterLabel;$("t-date").textContent=DATA_DATE;
+  $("breakdown").innerHTML=r.parts.map(p=>`<div class="bar"><span>${p.k} <span class="muted small">(${p.w}%)</span></span><div class="track"><i style="width:${Math.round(p.v*100)}%"></i></div><span class="pts num">${Math.round(p.v*p.w)}/${p.w}</span></div>`).join("");
+  $("breakdown-note").textContent=`Ocupação: ${occPct}% estimada (escala 35–85%). Receita: percentil ${Math.round(r.revPct*100)} entre os anúncios da cidade. Competição: ${Math.round(r.density)} anúncios do mesmo tipo por km² (menos competição = mais pontos).`;
+  $("t-note").textContent=`${r.inRadius} anúncios no raio; ${r.sample.length} usados após filtro de similaridade e remoção de outliers de preço. Ocupação é estimada (não observada) a partir da disponibilidade do calendário e da frequência de reviews. Endereço via ${geo.source||"base local"}. Fonte: ${DATA_REF}.`;
+  $("tips").innerHTML=tips(r,input).map((t,i)=>`<li><i>${i+1}</i><span>${t}</span></li>`).join("");
+  $("filter").value="";renderList("");
+}
+function miniChart(c,r){
+  const groups=[["Diária\nMédia",c.price,r.adr,fmtBRL],["Ocupação",c.occ,r.occRegion,v=>Math.round(v*100)+"%"],["Receita",c.revenue,r.adr*30.4*r.occRegion,v=>fmtBRL(v)]];
+  const W=206,H=100,top=22,base=76,left=10,gw=(W-left)/3;
+  let s=`<svg class="mini" viewBox="0 0 ${W} ${H}" aria-label="Comparação com a mediana da região">`;
+  for(let k=1;k<=3;k++){const y=base-(base-top)*k/3;s+=`<line class="grid" x1="${left}" x2="${W}" y1="${y}" y2="${y}"/>`;}
+  groups.forEach(([lab,v,m,f],i)=>{
+    const x0=left+i*gw+8,maxv=Math.max(v,m)||1,hv=(base-top)*v/maxv,hm=(base-top)*m/maxv;
+    s+=`<rect class="c" x="${x0}" y="${base-hv}" width="20" height="${hv}" rx="2"/><rect class="m" x="${x0+24}" y="${base-hm}" width="20" height="${hm}" rx="2"/>`;
+    s+=`<line class="med" x1="${x0-4}" x2="${x0+48}" y1="${base-hm}" y2="${base-hm}"/>`;
+    s+=`<text class="val" x="${x0+10}" y="${base-hv-3}" text-anchor="middle">${f(v)}</text>`;
+    lab.split("\n").forEach((ln,k)=>{s+=`<text class="lab" x="${x0+22}" y="${base+11+k*9}" text-anchor="middle">${ln}</text>`;});
+  });
+  s+=`<line class="axis" x1="${left}" x2="${W}" y1="${base}" y2="${base}"/></svg>`;return s;
+}
+function renderList(q){
+  if(!STATE)return;const {r}=STATE,n=norm(q||"");
+  const list=r.sample.filter(c=>!n||norm(c.name+" "+c.neighbourhood+" "+c.bedrooms+" quartos").includes(n));
+  const el=$("comp-list");
+  if(!list.length){el.innerHTML=`<div class="card empty">Nenhum imóvel da amostra corresponde ao filtro.</div>`;return;}
+  el.innerHTML=list.map(c=>`<div class="card comp"><div class="photo"><canvas width="192" height="192" data-seed="${c.photoSeed}" aria-hidden="true"></canvas><span class="pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span></div>
+    <div class="meta"><div class="name" title="${c.name}">${c.name}</div><div class="sub num">${Math.round(c.dist)} m · ${c.bedrooms===0?"Studio":c.bedrooms+" qt"} · ${c.accommodates} hósp. · ${c.number_of_reviews} reviews</div>${miniChart(c,r)}</div></div>`).join("");
+  el.querySelectorAll("canvas[data-seed]").forEach(cv=>drawPhoto(cv,+cv.dataset.seed));
+}
+
+/* ---------- navegação ---------- */
+const SCREENS={home:"screen-home",resultado:"screen-result",comparativos:"screen-compare"};
+function show(name){
+  if(name!=="home"&&!STATE)name="home";
+  for(const k in SCREENS)$(SCREENS[k]).hidden=k!==name;
+  if(location.hash!=="#"+name)history.replaceState(null,"","#"+name);
+  window.scrollTo({top:0,behavior:"instant"});
+  if(name==="resultado"&&LMAP)setTimeout(()=>{LMAP.invalidateSize();if(STATE)LMAP.fitBounds(L.latLng(STATE.geo.lat,STATE.geo.lng).toBounds(STATE.input.radius*2.1));},60);
+}
+window.addEventListener("hashchange",()=>show((location.hash||"#home").slice(1)));
+
+/* ---------- formulário ---------- */
+const selectedAmen=new Set(["Wi-Fi","Ar-condicionado","Cozinha"]);
+$("amenities").innerHTML=AMENITIES.map(a=>`<button type="button" class="chip" data-a="${a}" aria-pressed="${selectedAmen.has(a)}">${a}</button>`).join("");
+$("amenities").addEventListener("click",e=>{const b=e.target.closest(".chip");if(!b)return;const a=b.dataset.a;selectedAmen.has(a)?selectedAmen.delete(a):selectedAmen.add(a);b.setAttribute("aria-pressed",selectedAmen.has(a));});
+$("examples").innerHTML=EXAMPLES.map(e=>`<button type="button" class="chip link">${e}</button>`).join("");
+$("examples").addEventListener("click",e=>{const b=e.target.closest(".chip");if(b){$("address").value=b.textContent;$("error").classList.remove("show");}});
+function readInput(geo){return{lat:geo.lat,lng:geo.lng,radius:+$("radius").value,room_type:$("type").value,bedrooms:+$("bedrooms").value,guests:+$("guests").value,amenities:[...selectedAmen]};}
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();const err=$("error");err.classList.remove("show");
+  $("submit").disabled=true;$("status").textContent="Localizando o endereço e buscando comparáveis…";
+  const geo=await geocode($("address").value);
+  $("submit").disabled=false;$("status").textContent="";
+  if(!geo){err.textContent="Não encontramos esse endereço no Rio de Janeiro. Inclua rua e bairro (ex.: \"Rua Barata Ribeiro, 200, Copacabana\") ou informe latitude, longitude.";err.classList.add("show");return;}
+  const input=readInput(geo),r=analyze(input);
+  if(!r.ok){err.textContent=r.reason;err.classList.add("show");return;}
+  render(r,input,geo);show("resultado");
+});
+$("back-home").addEventListener("click",()=>show("home"));
+$("back-result").addEventListener("click",()=>show("resultado"));
+$("to-report").addEventListener("click",()=>show("comparativos"));
+$("new-analysis").addEventListener("click",()=>show("home"));
+$("open-info").addEventListener("click",()=>{$("sheet").hidden=false;});
+$("close-info").addEventListener("click",()=>{$("sheet").hidden=true;});
+$("sheet").addEventListener("click",e=>{if(e.target===$("sheet"))$("sheet").hidden=true;});
+$("filter").addEventListener("input",e=>renderList(e.target.value));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{if(STATE&&TILE_OK===false)drawCanvasMap(STATE.geo,STATE.r,STATE.input.radius);});
+
+/* estado inicial: exemplo do protótipo já calculado (geocodificação local, sem rede) */
+(function boot(){
+  const geo=geocodeLocal($("address").value);geo.source="base local";
+  const r=analyze(readInput(geo));if(r.ok)render(r,readInput(geo),geo);
+  show((location.hash||"#home").slice(1));
+})();
+</script>
