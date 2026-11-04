@@ -17,7 +17,8 @@ totalmente livre (availability_365 >= 360) são tratados como inativos e descart
 
 Formato de saída (compacto, uma lista por anúncio):
  [id, nome, bairro, lat, lng, tipo(0=inteiro,1=quarto), quartos, capacidade,
-  preço, availability_365, reviews_per_month, number_of_reviews, mascara_amenidades, foto]
+  preço, availability_365, reviews_per_month, number_of_reviews, mascara_amenidades,
+  foto (caminho após https://a0.muscache.com/), estimated_occupancy_l365d (dias/ano; -1 se ausente)]
 """
 import csv, gzip, json, re, sys
 
@@ -25,13 +26,14 @@ AMENITIES = ["Wi-Fi", "Ar-condicionado", "Piscina", "Estacionamento", "Cozinha",
 AMEN_PATTERNS = {
     "Wi-Fi": r"wi-?fi|internet",
     "Ar-condicionado": r"ar[\s-]?cond|a/c\b|\bac\b|air[\s-]?cond|climatizad",
-    "Piscina": r"piscina|\bpool\b|rooftop pool",
-    "Estacionamento": r"garagem|parking|\bvaga\b|estacionamento",
+    "Piscina": r"piscina|\bpool\b",
+    "Estacionamento": r"garagem|parking|\bvaga\b|estacionamento|carport",
     "Cozinha": r"cozinha|kitchen",
-    "Vista para o mar": r"vista (para o |pro |p/ )?mar|ocean ?view|sea ?view|beach ?front|frente (ao |para o |pro )?mar|ocean ?front|vista mar",
-    "Pet friendly": r"\bpet\b|aceita animais|dog",
+    "Vista para o mar": r"vista (para o |pro |p/ )?mar|ocean ?view|sea ?view|beach ?view|beach ?front|frente (ao |para o |pro )?mar|ocean ?front|waterfront|vista mar",
+    "Pet friendly": r"\bpets? allowed|\bpet\b|aceita animais",
     "Academia": r"academia|\bgym\b|fitness",
 }
+PIC_PREFIX = "https://a0.muscache.com/"
 
 def num(v, default=0.0):
     try:
@@ -91,10 +93,15 @@ def main(path, ref_date=""):
                 mask |= 1
                 if room == "Entire home/apt":
                     mask |= 1 << 4
-            out.append([int(row["id"]), name[:70], row.get("neighbourhood") or row.get("neighbourhood_cleansed", ""),
+            pic = row.get("picture_url") or ""
+            if pic.startswith(PIC_PREFIX):
+                pic = pic[len(PIC_PREFIX):]
+            est = row.get("estimated_occupancy_l365d")
+            est_days = int(num(est, -1)) if est not in (None, "") else -1
+            out.append([int(row["id"]), name[:70], row.get("neighbourhood_cleansed") or row.get("neighbourhood", ""),
                         round(lat, 5), round(lng, 5), 0 if room == "Entire home/apt" else 1, bedrooms, acc,
                         round(price), avail, round(num(row.get("reviews_per_month"), 0), 2),
-                        int(num(row.get("number_of_reviews"), 0)), mask, row.get("picture_url") or ""])
+                        int(num(row.get("number_of_reviews"), 0)), mask, pic, est_days])
     sys.stdout.write('window.LISTINGS_DATE = ' + json.dumps(ref_date, ensure_ascii=False) + ';\n')
     sys.stdout.write('window.LISTINGS_COMPACT = ' + json.dumps(out, ensure_ascii=False, separators=(",", ":")) + ';\n')
     sys.stderr.write(f"{len(out)} anúncios ativos exportados, {skipped} descartados\n")

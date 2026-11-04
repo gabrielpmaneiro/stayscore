@@ -381,7 +381,7 @@ function demoListings(){
   }
   return out;
 }
-function expandCompact(rows){return rows.map(a=>({id:a[0],name:a[1],neighbourhood:a[2],latitude:a[3],longitude:a[4],room_type:a[5]===0?"Entire home/apt":"Private room",bedrooms:a[6],accommodates:a[7],price:a[8],availability_365:a[9],reviews_per_month:a[10],number_of_reviews:a[11],amenities:AMENITIES.filter((x,i)=>a[12]&(1<<i)),picture:a[13]||"",photoSeed:a[0]%1000000}));}
+function expandCompact(rows){return rows.map(a=>({id:a[0],name:a[1],neighbourhood:a[2],latitude:a[3],longitude:a[4],room_type:a[5]===0?"Entire home/apt":"Private room",bedrooms:a[6],accommodates:a[7],price:a[8],availability_365:a[9],reviews_per_month:a[10],number_of_reviews:a[11],amenities:AMENITIES.filter((x,i)=>a[12]&(1<<i)),picture:a[13]?(a[13].startsWith("http")?a[13]:"https://a0.muscache.com/"+a[13]):"",estOccDays:(a[14]??-1),photoSeed:a[0]%1000000}));}
 const REAL=(window.LISTINGS_COMPACT&&window.LISTINGS_COMPACT.length>50)||(window.LISTINGS_DATA&&window.LISTINGS_DATA.length>50);
 const LISTINGS=window.LISTINGS_COMPACT&&window.LISTINGS_COMPACT.length>50?expandCompact(window.LISTINGS_COMPACT):(REAL?window.LISTINGS_DATA:demoListings());
 const DATA_DATE=REAL?(window.LISTINGS_DATE||"última publicação do Inside Airbnb"):"27 jun 2026 (base de demonstração)";
@@ -392,6 +392,7 @@ $("footer").textContent=REAL?`Base: Inside Airbnb · Rio de Janeiro · ${LISTING
 function estimateOccupancy(l){
   const occCal=clamp(1-l.availability_365/365,0,1);          // disponibilidade do calendário
   const occRev=clamp((l.reviews_per_month/0.5)*3.5/30.4,0,1); // reviews ≈ 50% das reservas; estadia média 3,5 noites
+  if(l.estOccDays>=0) return clamp(0.6*(l.estOccDays/365)+0.4*occCal,0.05,0.97); // base detalhada: estimativa de ocupação do Inside Airbnb (12 meses) + calendário
   return clamp(0.5*occCal+0.5*occRev,0.05,0.97);
 }
 LISTINGS.forEach(l=>{l.occ=estimateOccupancy(l);l.revenue=l.price*30.4*l.occ;});
@@ -518,7 +519,7 @@ function render(r,input,geo){
   $("t-n").textContent=`${r.sample.length} imóveis${r.inRadius>r.sample.length?" (de "+r.inRadius+" no raio)":""}`;$("t-radius").textContent=radiusLabel;$("t-filter").textContent=r.filterLabel;$("t-date").textContent=DATA_DATE;
   $("breakdown").innerHTML=r.parts.map(p=>`<div class="bar"><span>${p.k} <span class="muted small">(${p.w}%)</span></span><div class="track"><i style="width:${Math.round(p.v*100)}%"></i></div><span class="pts num">${Math.round(p.v*p.w)}/${p.w}</span></div>`).join("");
   $("breakdown-note").textContent=`Ocupação: ${occPct}% estimada, percentil ${Math.round(r.occPctl*100)} entre os anúncios ativos da cidade (mediana ${Math.round(r.cityOcc*100)}%). Receita: percentil ${Math.round(r.revPct*100)} entre os anúncios da cidade. Competição: ${Math.round(r.density)} anúncios do mesmo tipo por km² (menos competição = mais pontos).`;
-  $("t-note").textContent=`${r.inRadius} anúncios no raio; ${r.sample.length} usados após filtro de similaridade e remoção de outliers de preço. Ocupação é estimada (não observada) a partir da disponibilidade do calendário e da frequência de reviews; anúncios sem review nos últimos 12 meses e com calendário livre foram tratados como inativos.${REAL?" Quartos, capacidade e amenidades vêm do título do anúncio (a base resumida não traz essas colunas).":""} Endereço via ${geo.source||"base local"}. Fonte: ${DATA_REF}.`;
+  $("t-note").textContent=`${r.inRadius} anúncios no raio; ${r.sample.length} usados após filtro de similaridade e remoção de outliers de preço. Ocupação é estimada (não observada) a partir da disponibilidade do calendário e da frequência de reviews; anúncios sem review nos últimos 12 meses e com calendário livre foram tratados como inativos.${REAL&&LISTINGS[0].estOccDays>=0?" Na base detalhada, a ocupação combina a estimativa de 12 meses do Inside Airbnb (60%) com a disponibilidade do calendário (40%).":REAL?" Quartos, capacidade e amenidades vêm do título do anúncio (a base resumida não traz essas colunas).":""} Endereço via ${geo.source||"base local"}. Fonte: ${DATA_REF}.`;
   $("tips").innerHTML=tips(r,input).map((t,i)=>`<li><i>${i+1}</i><span>${t}</span></li>`).join("");
   $("filter").value="";renderList("");
 }
