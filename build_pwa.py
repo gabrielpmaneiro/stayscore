@@ -25,13 +25,13 @@ head = """<!doctype html>
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="StayScore">
 <style>:root{color-scheme:light dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} img{max-width:100%} [hidden]{display:none!important}</style>
-<script src="listings.js"></script>
 </head>
 <body>
 """
 tail = """
 <script>
-if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
+if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  let refreshed = false; navigator.serviceWorker.addEventListener("controllerchange", () => { if (!refreshed) { refreshed = true; location.reload(); } }); }
 </script>
 </body>
 </html>
@@ -57,7 +57,7 @@ open(os.path.join(OUT, "manifest.webmanifest"), "w", encoding="utf-8").write("""
 }
 """)
 
-open(os.path.join(OUT, "sw.js"), "w", encoding="utf-8").write("""const CACHE = "stayscore-v3";
+open(os.path.join(OUT, "sw.js"), "w", encoding="utf-8").write("""const CACHE = "stayscore-v4";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./listings.js", "./icons/icon-192.png", "./icons/icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

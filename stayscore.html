@@ -2,6 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="listings.js"></script>
 <style>
 /* Layout: telas em coluna única (largura de celular, máx. 480px), roteadas por hash, fiéis à Figura 1 do relatório. */
 :root{
@@ -380,11 +381,12 @@ function demoListings(){
   }
   return out;
 }
-const REAL=window.LISTINGS_DATA&&window.LISTINGS_DATA.length>50;
-const LISTINGS=REAL?window.LISTINGS_DATA:demoListings();
+function expandCompact(rows){return rows.map(a=>({id:a[0],name:a[1],neighbourhood:a[2],latitude:a[3],longitude:a[4],room_type:a[5]===0?"Entire home/apt":"Private room",bedrooms:a[6],accommodates:a[7],price:a[8],availability_365:a[9],reviews_per_month:a[10],number_of_reviews:a[11],amenities:AMENITIES.filter((x,i)=>a[12]&(1<<i)),picture:a[13]||"",photoSeed:a[0]%1000000}));}
+const REAL=(window.LISTINGS_COMPACT&&window.LISTINGS_COMPACT.length>50)||(window.LISTINGS_DATA&&window.LISTINGS_DATA.length>50);
+const LISTINGS=window.LISTINGS_COMPACT&&window.LISTINGS_COMPACT.length>50?expandCompact(window.LISTINGS_COMPACT):(REAL?window.LISTINGS_DATA:demoListings());
 const DATA_DATE=REAL?(window.LISTINGS_DATE||"última publicação do Inside Airbnb"):"27 jun 2026 (base de demonstração)";
-const DATA_REF=REAL?"Inside Airbnb · Rio de Janeiro · "+DATA_DATE:"base de demonstração calibrada por bairro a partir de dados públicos do Rio (os dados reais do Inside Airbnb entram via listings.js)";
-if(!REAL) $("footer").textContent="Base atual: demonstração calibrada por bairro · Geocodificação: Nominatim / OpenStreetMap";
+const DATA_REF=REAL?"Inside Airbnb · Rio de Janeiro · "+LISTINGS.length.toLocaleString("pt-BR")+" anúncios ativos · ref. "+DATA_DATE:"base de demonstração calibrada por bairro (os dados reais do Inside Airbnb entram via listings.js)";
+$("footer").textContent=REAL?`Base: Inside Airbnb · Rio de Janeiro · ${LISTINGS.length.toLocaleString("pt-BR")} anúncios ativos (ref. ${DATA_DATE}) · Geocodificação: Nominatim / OpenStreetMap`:"Base atual: demonstração calibrada por bairro · Geocodificação: Nominatim / OpenStreetMap";
 
 /* ---------- ocupação estimada por anúncio (Seção 5.2) ---------- */
 function estimateOccupancy(l){
@@ -393,7 +395,9 @@ function estimateOccupancy(l){
   return clamp(0.5*occCal+0.5*occRev,0.05,0.97);
 }
 LISTINGS.forEach(l=>{l.occ=estimateOccupancy(l);l.revenue=l.price*30.4*l.occ;});
-const CITY_REV=LISTINGS.map(l=>l.revenue),CITY_OCC=LISTINGS.map(l=>l.occ);
+const CITY_REV=LISTINGS.map(l=>l.revenue).sort((a,b)=>a-b),CITY_OCC=LISTINGS.map(l=>l.occ).sort((a,b)=>a-b);
+const pctOf=(sorted,v)=>{let lo=0,hi=sorted.length;while(lo<hi){const m=(lo+hi)>>1;if(sorted[m]<=v)lo=m+1;else hi=m;}return lo/sorted.length;};
+const OCC_Q40=quantile(CITY_OCC,.4),OCC_Q75=quantile(CITY_OCC,.75);
 
 /* ---------- comparáveis + cálculo (etapas 2 e 3) ---------- */
 function analyze(input){
@@ -409,7 +413,7 @@ function analyze(input){
   if(comps.length<3)return{ok:false,reason:"Poucos anúncios comparáveis nesse raio. Aumente o raio de busca ou use um endereço em outra região."};
   const prices=comps.map(c=>c.price),q1=quantile(prices,.25),q3=quantile(prices,.75),iqr=q3-q1;
   const clean=comps.filter(c=>c.price>=q1-1.5*iqr&&c.price<=q3+1.5*iqr);
-  const sample=(clean.length>=5?clean:comps).sort((a,b)=>a.dist-b.dist);
+  const sample=(clean.length>=5?clean:comps).sort((a,b)=>a.dist-b.dist).slice(0,300);   // até 300 comparáveis mais próximos
   const adr=median(sample.map(c=>c.price)),adrLow=quantile(sample.map(c=>c.price),.25),adrHigh=quantile(sample.map(c=>c.price),.75);
   const occ=median(sample.map(c=>c.occ)),occLow=quantile(sample.map(c=>c.occ),.25),occHigh=quantile(sample.map(c=>c.occ),.75);
   let amenAdj=0;
@@ -420,15 +424,16 @@ function analyze(input){
   const occUser=clamp(occ+clamp(amenAdj,-0.08,0.08),0.05,0.97);
   const days=Math.round(occUser*30.4),revenue=adr*days;
   const density=inRadius.filter(l=>l.room_type===room_type).length/(Math.PI*(radius/1000)**2);
-  const occScore=clamp((occUser-0.35)/0.5,0,1);
-  const revPct=CITY_REV.filter(v=>v<=revenue).length/CITY_REV.length;
+  const occPctl=pctOf(CITY_OCC,occUser);                 // posição da ocupação entre os anúncios ativos da cidade
+  const occScore=clamp((occPctl-0.15)/0.8,0,1);
+  const revPct=pctOf(CITY_REV,revenue);
   const revScore=clamp((revPct-0.2)/0.75,0,1);
-  const compScore=clamp(1-(density-15)/125,0,1);
+  const compScore=clamp(1-(Math.log10(Math.max(density,1))-1)/2.6,0,1);   // 10/km² → 1 ponto; ~4.000/km² → 0
   const score=Math.round(100*(0.45*occScore+0.35*revScore+0.20*compScore));
   return{ok:true,score,adr,adrLow,adrHigh,occ:occUser,occLow,occHigh,occRegion:occ,days,revenue,sample,filterLabel,inRadius:inRadius.length,density,
-    parts:[{k:"Ocupação",w:45,v:occScore},{k:"Receita",w:35,v:revScore},{k:"Competição",w:20,v:compScore}],cityOcc:median(CITY_OCC),revPct};
+    parts:[{k:"Ocupação",w:45,v:occScore},{k:"Receita",w:35,v:revScore},{k:"Competição",w:20,v:compScore}],cityOcc:median(CITY_OCC),revPct,occPctl};
 }
-function verdict(s){return s>=80?["Excelente","Potencial"]:s>=65?["Muito Bom","Potencial"]:s>=50?["Bom","Potencial"]:s>=35?["Regular","Potencial"]:["Baixo","Potencial"];}
+function verdict(s){return s>=75?["Excelente","Potencial"]:s>=60?["Muito Bom","Potencial"]:s>=45?["Bom","Potencial"]:s>=30?["Regular","Potencial"]:["Baixo","Potencial"];}
 function tips(r,input){
   const t=[],s=r.sample;
   const withAC=s.filter(c=>c.amenities.includes("Ar-condicionado")),noAC=s.filter(c=>!c.amenities.includes("Ar-condicionado"));
@@ -436,7 +441,7 @@ function tips(r,input){
   const top=s.filter(c=>c.occ>=r.occHigh);if(top.length){const p=median(top.map(c=>c.price));t.push(`Os 25% mais ocupados cobram em média ${fmtBRL(p)} por diária, ${p<r.adr?"abaixo":"acima"} da mediana de ${fmtBRL(r.adr)}. Use essa faixa como referência inicial de preço.`);}
   if(r.density>90)t.push(`A região tem alta competição (${Math.round(r.density)} anúncios/km² do mesmo tipo). Fotos profissionais e resposta rápida pesam mais aqui do que uma diária baixa.`);
   else if(r.density<35)t.push(`Há poucos anúncios do mesmo tipo por km² (${Math.round(r.density)}). Oferta baixa costuma sustentar diárias acima da mediana nos fins de semana.`);
-  if(r.occ<0.55)t.push("A ocupação estimada está abaixo de 55%. Diárias flexíveis por temporada e estadia mínima de 2 noites ajudam a preencher dias de semana.");
+  if(r.occ<OCC_Q40)t.push("A ocupação estimada está abaixo da média da cidade. Diárias flexíveis por temporada e estadia mínima de 2 noites ajudam a preencher dias de semana.");
   else t.push(`Com ${Math.round(r.occ*100)}% de ocupação estimada, o calendário tende a encher: evite bloquear datas de alta temporada (réveillon e carnaval) e revise a diária mensalmente.`);
   t.push(`Acompanhe a receita projetada (${fmtBRL(r.revenue)}/mês) e refaça a análise quando a base do Inside Airbnb for atualizada.`);
   return t.slice(0,4);
@@ -499,7 +504,7 @@ function render(r,input,geo){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{fill.style.strokeDashoffset=len*(1-r.score/100);}));
   $("r-address").textContent="Análise para: "+geo.label;
   const occPct=Math.round(r.occ*100);
-  $("k-occ").textContent=occPct+"% "+(r.occ>=r.cityOcc?"↑":"↓");$("k-occ").className="num v "+(occPct>=65?"":occPct>=50?"warn":"bad");
+  $("k-occ").textContent=occPct+"% "+(r.occ>=r.cityOcc?"↑":"↓");const occLevel=r.occ>=OCC_Q75?"":r.occ>=OCC_Q40?"warn":"bad";$("k-occ").className="num v "+occLevel;
   $("k-occ-sub").textContent=`(Média do mercado ${Math.round(r.occLow*100)}-${Math.round(r.occHigh*100)}%)`;
   const adrRatio=r.adr/median(LISTINGS.filter(l=>l.room_type===input.room_type).map(l=>l.price));
   $("k-adr").textContent=fmtBRLc(r.adr);$("k-adr-tag").textContent=adrRatio>=1.3?"Alto":adrRatio>=0.8?"Médio":"Baixo";$("k-adr-tag").className="tag "+(adrRatio>=1.3?"":adrRatio>=0.8?"warn":"bad");
@@ -510,10 +515,10 @@ function render(r,input,geo){
   STATE={r,input,geo};
   if(!drawLeaflet(geo,r,input.radius)){TILE_OK=false;$("mapbox").classList.add("fallback");}
   if(TILE_OK===false)drawCanvasMap(geo,r,input.radius);
-  $("t-n").textContent=`${r.sample.length} imóveis`;$("t-radius").textContent=radiusLabel;$("t-filter").textContent=r.filterLabel;$("t-date").textContent=DATA_DATE;
+  $("t-n").textContent=`${r.sample.length} imóveis${r.inRadius>r.sample.length?" (de "+r.inRadius+" no raio)":""}`;$("t-radius").textContent=radiusLabel;$("t-filter").textContent=r.filterLabel;$("t-date").textContent=DATA_DATE;
   $("breakdown").innerHTML=r.parts.map(p=>`<div class="bar"><span>${p.k} <span class="muted small">(${p.w}%)</span></span><div class="track"><i style="width:${Math.round(p.v*100)}%"></i></div><span class="pts num">${Math.round(p.v*p.w)}/${p.w}</span></div>`).join("");
-  $("breakdown-note").textContent=`Ocupação: ${occPct}% estimada (escala 35–85%). Receita: percentil ${Math.round(r.revPct*100)} entre os anúncios da cidade. Competição: ${Math.round(r.density)} anúncios do mesmo tipo por km² (menos competição = mais pontos).`;
-  $("t-note").textContent=`${r.inRadius} anúncios no raio; ${r.sample.length} usados após filtro de similaridade e remoção de outliers de preço. Ocupação é estimada (não observada) a partir da disponibilidade do calendário e da frequência de reviews. Endereço via ${geo.source||"base local"}. Fonte: ${DATA_REF}.`;
+  $("breakdown-note").textContent=`Ocupação: ${occPct}% estimada, percentil ${Math.round(r.occPctl*100)} entre os anúncios ativos da cidade (mediana ${Math.round(r.cityOcc*100)}%). Receita: percentil ${Math.round(r.revPct*100)} entre os anúncios da cidade. Competição: ${Math.round(r.density)} anúncios do mesmo tipo por km² (menos competição = mais pontos).`;
+  $("t-note").textContent=`${r.inRadius} anúncios no raio; ${r.sample.length} usados após filtro de similaridade e remoção de outliers de preço. Ocupação é estimada (não observada) a partir da disponibilidade do calendário e da frequência de reviews; anúncios sem review nos últimos 12 meses e com calendário livre foram tratados como inativos.${REAL?" Quartos, capacidade e amenidades vêm do título do anúncio (a base resumida não traz essas colunas).":""} Endereço via ${geo.source||"base local"}. Fonte: ${DATA_REF}.`;
   $("tips").innerHTML=tips(r,input).map((t,i)=>`<li><i>${i+1}</i><span>${t}</span></li>`).join("");
   $("filter").value="";renderList("");
 }
@@ -541,7 +546,8 @@ function renderList(q){
   const list=r.sample.filter(c=>!n||norm(c.name+" "+c.neighbourhood+" "+c.bedrooms+" quartos").includes(n));
   const el=$("comp-list");
   if(!list.length){el.innerHTML=`<div class="card empty">Nenhum imóvel da amostra corresponde ao filtro.</div>`;return;}
-  el.innerHTML=list.map(c=>`<div class="card comp"><div class="photo"><canvas width="192" height="192" data-seed="${c.photoSeed}" aria-hidden="true"></canvas><span class="pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span></div>
+  const shown=list.slice(0,60);
+  el.innerHTML=(list.length>shown.length?`<p class="muted small" style="text-align:center">Mostrando os ${shown.length} mais próximos de ${list.length} comparáveis</p>`:"")+shown.map(c=>`<div class="card comp"><div class="photo">${c.picture?`<img src="${c.picture}" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">`:`<canvas width="192" height="192" data-seed="${c.photoSeed}" aria-hidden="true"></canvas>`}<span class="pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span></div>
     <div class="meta"><div class="name" title="${c.name}">${c.name}</div><div class="sub num">${Math.round(c.dist)} m · ${c.bedrooms===0?"Studio":c.bedrooms+" qt"} · ${c.accommodates} hósp. · ${c.number_of_reviews} reviews</div>${miniChart(c,r)}</div></div>`).join("");
   el.querySelectorAll("canvas[data-seed]").forEach(cv=>drawPhoto(cv,+cv.dataset.seed));
 }
