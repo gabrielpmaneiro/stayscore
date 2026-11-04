@@ -93,7 +93,8 @@ input[type=text],select{width:100%;font:inherit;padding:12px 14px;border:1.5px s
 
 .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .kpi{background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:12px 8px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;min-width:0}
-.kpi .ico{height:40px;display:grid;place-items:center;margin-bottom:2px}
+.kpi .ico{height:44px;display:grid;place-items:center;margin-bottom:2px;font-size:2rem;line-height:1;position:relative}
+.kpi .ico-badge{position:absolute;right:-6px;bottom:0;font-size:.95rem}
 .kpi .t{font-size:.8rem;font-weight:700;line-height:1.2}
 .kpi .v{font-family:var(--display);font-weight:800;font-size:1.2rem;color:var(--brand);line-height:1.1;word-break:break-word}
 .kpi .v.warn,.kpi .tag.warn{color:var(--warn)} .kpi .v.bad,.kpi .tag.bad{color:var(--bad)}
@@ -151,7 +152,7 @@ input[type=text],select{width:100%;font:inherit;padding:12px 14px;border:1.5px s
 .comp svg.mini{width:100%;height:auto;display:block}
 .mini text{font-family:var(--body);fill:var(--muted);font-size:9px}
 .mini .lab{font-size:8.5px} .mini .tick{font-size:7.5px}
-.mini .val{fill:var(--fg);font-weight:700;font-size:9px;font-family:var(--display)}
+.mini .val{fill:var(--fg);font-weight:700;font-size:8px;font-family:var(--display)}
 .mini .c{fill:var(--brand)} .mini .m{fill:var(--grey-bar)}
 .mini .med{stroke:var(--warn);stroke-width:1.2;stroke-dasharray:3 2}
 .mini .axis{stroke:var(--line)} .mini .grid{stroke:var(--line);stroke-dasharray:2 3}
@@ -219,20 +220,20 @@ input[type=text],select{width:100%;font:inherit;padding:12px 14px;border:1.5px s
 
   <div class="kpis">
     <div class="kpi">
-      <div class="ico" aria-hidden="true"><svg width="38" height="38" viewBox="0 0 48 48"><rect x="6" y="10" width="36" height="32" rx="5" fill="#fff" stroke="#d84a3a" stroke-width="3"/><rect x="6" y="10" width="36" height="9" rx="4" fill="#d84a3a"/><path d="M14 6v8M34 6v8" stroke="#d84a3a" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="31" r="8" fill="#1e9b57"/><path d="M20 31l3 3 5-6" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="ico" aria-hidden="true">📅<span class="ico-badge">✅</span></div>
       <div class="t">Ocupação Média Mensal</div>
       <div class="v num" id="k-occ">—</div>
       <div class="s" id="k-occ-sub">—</div>
     </div>
     <div class="kpi">
-      <div class="ico" aria-hidden="true"><svg width="38" height="38" viewBox="0 0 48 48"><rect x="4" y="16" width="34" height="20" rx="3" fill="#1e9b57" transform="rotate(-8 21 26)"/><rect x="8" y="14" width="36" height="22" rx="3" fill="#2fb466" stroke="#fff" stroke-width="2"/><circle cx="26" cy="25" r="6" fill="#fff" opacity=".9"/><path d="M26 22v6" stroke="#1e9b57" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <div class="ico" aria-hidden="true">💵</div>
       <div class="t">Diária Média Estimada</div>
       <div class="v num" id="k-adr">—</div>
       <div class="tag" id="k-adr-tag">—</div>
       <div class="s" id="k-adr-sub">—</div>
     </div>
     <div class="kpi">
-      <div class="ico" aria-hidden="true"><svg width="38" height="38" viewBox="0 0 48 48"><path d="M10 6h28v36l-3.5-2.5L31 42l-3.5-2.5L24 42l-3.5-2.5L17 42l-3.5-2.5L10 42z" fill="#fff" stroke="#6b7a70" stroke-width="2.5" stroke-linejoin="round"/><rect x="15" y="11" width="18" height="6" rx="1.5" fill="#1e9b57"/><path d="M16 23h16M16 29h16M16 35h9" stroke="#6b7a70" stroke-width="2.5" stroke-linecap="round"/></svg></div>
+      <div class="ico" aria-hidden="true">🧾</div>
       <div class="t">Receita Mensal Projetada</div>
       <div class="v num" id="k-rev">—</div>
       <div class="s" id="k-rev-sub">—</div>
@@ -535,16 +536,21 @@ function render(r,input,geo){
   $("filter").value="";renderList("");
 }
 function miniChart(c,r){
-  const groups=[["Diária\nMédia",c.price,r.adr,fmtBRL],["Ocupação",c.occ,r.occRegion,v=>Math.round(v*100)+"%"],["Receita",c.revenue,r.adr*30.4*r.occRegion,v=>fmtBRL(v)]];
-  const W=206,H=100,top=22,base=76,left=10,gw=(W-left)/3;
+  /* Eixo único em R$/dia: Diária = preço; Ocupação = % do topo do eixo; Receita = receita mensal ÷ 30,4 (R$ por dia). Valores reais nos rótulos. */
+  const revDay=c.revenue/30.4, revMedDay=r.adr*30.4*r.occRegion/30.4;
+  const rawMax=Math.max(c.price,r.adr,revDay,revMedDay)*1.08;
+  const step=rawMax>2400?1000:rawMax>1200?500:rawMax>600?300:rawMax>300?150:rawMax>120?50:25;
+  const axisMax=Math.ceil(rawMax/step)*step, nTicks=Math.round(axisMax/step);
+  const groups=[["Diária\nMédia",c.price,r.adr,fmtBRL(c.price)],["Ocupação",c.occ*axisMax,r.occRegion*axisMax,Math.round(c.occ*100)+"%"],["Receita",revDay,revMedDay,fmtBRL(c.revenue)]];
+  const W=210,H=104,top=18,base=80,left=30,gw=(W-left)/3;
   let s=`<svg class="mini" viewBox="0 0 ${W} ${H}" aria-label="Comparação com a mediana da região">`;
-  for(let k=1;k<=3;k++){const y=base-(base-top)*k/3;s+=`<line class="grid" x1="${left}" x2="${W}" y1="${y}" y2="${y}"/>`;}
-  groups.forEach(([lab,v,m,f],i)=>{
-    const x0=left+i*gw+8,maxv=Math.max(v,m)||1,hv=(base-top)*v/maxv,hm=(base-top)*m/maxv;
-    s+=`<rect class="c" x="${x0}" y="${base-hv}" width="20" height="${hv}" rx="2"/><rect class="m" x="${x0+24}" y="${base-hm}" width="20" height="${hm}" rx="2"/>`;
-    s+=`<line class="med" x1="${x0-4}" x2="${x0+48}" y1="${base-hm}" y2="${base-hm}"/>`;
-    s+=`<text class="val" x="${x0+10}" y="${base-hv-3}" text-anchor="middle">${f(v)}</text>`;
-    lab.split("\n").forEach((ln,k)=>{s+=`<text class="lab" x="${x0+22}" y="${base+11+k*9}" text-anchor="middle">${ln}</text>`;});
+  for(let k=0;k<=nTicks;k++){const y=base-(base-top)*k/nTicks;s+=`<line class="grid" x1="${left}" x2="${W}" y1="${y}" y2="${y}"/><text class="tick" x="${left-4}" y="${y+3}" text-anchor="end">${(k*step).toLocaleString("pt-BR")}</text>`;}
+  groups.forEach(([lab,v,m,label],i)=>{
+    const x0=left+i*gw+9,hv=(base-top)*v/axisMax,hm=(base-top)*m/axisMax;
+    s+=`<rect class="c" x="${x0}" y="${base-hv}" width="18" height="${hv}" rx="2"/><rect class="m" x="${x0+22}" y="${base-hm}" width="18" height="${hm}" rx="2"/>`;
+    s+=`<line class="med" x1="${x0-4}" x2="${x0+44}" y1="${base-hm}" y2="${base-hm}"/>`;
+    s+=`<text class="val" x="${x0+9}" y="${base-hv-3}" text-anchor="middle">${label}</text>`;
+    lab.split("\n").forEach((ln,k)=>{s+=`<text class="lab" x="${x0+20}" y="${base+11+k*9}" text-anchor="middle">${ln}</text>`;});
   });
   s+=`<line class="axis" x1="${left}" x2="${W}" y1="${base}" y2="${base}"/></svg>`;return s;
 }
@@ -567,7 +573,7 @@ function show(name){
   window.scrollTo({top:0,behavior:"instant"});
   if(name==="resultado"&&LMAP)setTimeout(()=>{LMAP.invalidateSize();if(STATE)LMAP.fitBounds(L.latLng(STATE.geo.lat,STATE.geo.lng).toBounds(STATE.input.radius*2.1));},60);
 }
-window.addEventListener("hashchange",()=>show((location.hash||"#home").slice(1)));
+window.addEventListener("hashchange",()=>show((location.hash||"#resultado").slice(1)));
 
 /* ---------- formulário ---------- */
 const selectedAmen=new Set(["Wi-Fi","Ar-condicionado","Cozinha"]);
@@ -600,7 +606,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{if(STA
 (function boot(){
   const geo=geocodeLocal($("address").value);geo.source="base local";
   const r=analyze(readInput(geo));if(r.ok)render(r,readInput(geo),geo);
-  show((location.hash||"#home").slice(1));
+  show((location.hash||"#resultado").slice(1));
 })();
 </script>
 
