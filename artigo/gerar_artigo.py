@@ -97,11 +97,12 @@ X.append(p("papertitle", r("StayScore: Inteligência de Mercado para Aluguel por
 X.append(SECT_TITLE)
 
 AUTHORS = [("1", "st", "Bernardo Miller"), ("2", "nd", "Claudia Abajo"), ("3", "rd", "Enrico Astolfi"), ("4", "th", "Gabriel Maneiro"), ("5", "th", "Gabriel Martins")]
-for n, suf, name in AUTHORS:
-    X.append('<w:p><w:pPr><w:pStyle w:val="Author"/><w:spacing w:before="100" w:after="40"/><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>'
-             + r(n, sz=18) + r(suf, sup=True, sz=18) + r(" " + name, sz=18) + '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:br/></w:r>'
+for idx, (n, suf, name) in enumerate(AUTHORS):
+    colbr = '<w:r><w:br w:type="column"/></w:r>' if idx in (2, 4) else ''
+    X.append('<w:p><w:pPr><w:pStyle w:val="Author"/><w:keepLines/><w:spacing w:before="100" w:after="40"/><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>'
+             + colbr + r(n, sz=18) + r(suf, sup=True, sz=18) + r(" " + name, sz=18) + '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:br/></w:r>'
              + r("Disciplina de Análise de Dados", i=True, sz=18) + '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:br/></w:r>'
-             + r("[Nome da Instituição]", i=True, sz=18) + '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:br/></w:r>'
+             + r("Ibmec – Campus Barra da Tijuca", i=True, sz=18) + '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:br/></w:r>'
              + r("Rio de Janeiro, Brasil", sz=18) + '<w:r><w:rPr><w:sz w:val="18"/></w:rPr><w:br/></w:r>'
              + r("gabrielpmaneiro@gmail.com" if name == "Gabriel Maneiro" else "[e-mail]", sz=18) + "</w:p>")
 X.append(sect(3, 720, margin=893))
