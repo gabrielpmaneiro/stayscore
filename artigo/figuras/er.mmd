@@ -1,0 +1,35 @@
+erDiagram
+  LISTINGS {
+    bigint id PK
+    bigint host_id FK
+    text neighbourhood_cleansed FK
+    decimal latitude
+    decimal longitude
+    text room_type
+    int bedrooms
+    int accommodates
+    json amenities
+    money price
+    int availability_365
+    decimal reviews_per_month
+    int estimated_occupancy_l365d
+  }
+  CALENDAR {
+    bigint listing_id FK
+    date date
+    boolean available
+    money price
+  }
+  REVIEWS {
+    bigint id PK
+    bigint listing_id FK
+    date date
+    text comments
+  }
+  NEIGHBOURHOODS {
+    text neighbourhood PK
+    geometry geometry
+  }
+  LISTINGS ||--o{ CALENDAR : "365 dias"
+  LISTINGS ||--o{ REVIEWS : "recebe"
+  NEIGHBOURHOODS ||--o{ LISTINGS : "contem"
