@@ -349,7 +349,7 @@ async function geocode(q){
     const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&viewbox=-43.80,-22.74,-43.09,-23.10&bounded=1&q="+encodeURIComponent(q);
     const res=await fetch(url,{signal:ctl.signal,headers:{"Accept-Language":"pt-BR"}}); clearTimeout(to);
     if(res.ok){const j=await res.json(); if(j.length){const lat=+j[0].lat,lng=+j[0].lon; const a=j[0].address||{}; const nb=a.suburb||a.neighbourhood||a.city_district||nearestNeighborhood(lat,lng);
-      const label=[a.road||a.pedestrian||a.residential,a.house_number,nb,"Rio de Janeiro"].filter(Boolean).join(", "); return{lat,lng,label:label||j[0].display_name,neighborhood:nb,source:"Nominatim"};}}
+      const road=a.road||a.pedestrian||a.residential; const typed=q.replace(/,?\s*rio de janeiro.*$/i,"").trim(); const label=road?[road,a.house_number,nb,"Rio de Janeiro"].filter(Boolean).join(", "):typed+(nb&&!typed.toLowerCase().includes(nb.toLowerCase())?" ("+nb+")":"")+", Rio de Janeiro"; return{lat,lng,label,neighborhood:nb,source:"Nominatim"};}}
   }catch(e){}
   const g=geocodeLocal(q); if(g) g.source="base local"; return g;
 }
