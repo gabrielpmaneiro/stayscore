@@ -1,0 +1,8 @@
+flowchart TB
+  U[Usuário<br/>endereço + características] --> G[Geocodificação<br/>Nominatim / OSM]
+  G --> R[Busca por raio<br/>Haversine, 0,5–2 km]
+  D[(Inside Airbnb<br/>Rio de Janeiro<br/>40.261 anúncios ativos)] --> R
+  R --> F[Filtro de similaridade<br/>tipo, quartos, capacidade<br/>+ remoção de outliers IQR]
+  F --> C[Cálculo<br/>diária mediana, ocupação,<br/>receita, competição]
+  C --> S[Stay Score 0–100<br/>45% ocupação · 35% receita · 20% competição]
+  S --> V[Resultado<br/>cartões, mapa, comparáveis]
